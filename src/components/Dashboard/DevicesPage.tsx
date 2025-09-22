@@ -2,89 +2,105 @@ import React, { useState, useEffect } from 'react';
 import { Search, Grid, List, Wifi, WifiOff } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useTheme } from '../../hooks/useTheme';
-import { apiService, Device } from '../../services/api';
+import { apiService, EnhancedDevice, DevicesResponse } from '../../services/api';
 
-interface DeviceData extends Device {
-  wellName?: string;
-  lastCommTime?: string;
-  waterCut?: number;
-  gvf?: number;
-  wfr?: number;
-  ofr?: number;
-  gfr?: number;
-  status?: 'Online' | 'Offline';
+interface DevicesPageProps {
+  selectedHierarchy?: any;
+  selectedDevice?: any;
 }
 
-const DevicesPage: React.FC = () => {
+const DevicesPage: React.FC<DevicesPageProps> = ({ selectedHierarchy, selectedDevice }) => {
   const { token } = useAuth();
   const { theme } = useTheme();
-  const [devices, setDevices] = useState<DeviceData[]>([]);
-  const [filteredDevices, setFilteredDevices] = useState<DeviceData[]>([]);
+  const [devices, setDevices] = useState<EnhancedDevice[]>([]);
+  const [statistics, setStatistics] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'list' | 'card'>('list');
+  const [filters, setFilters] = useState({
+    status: '',
+    deviceType: '',
+  });
 
   useEffect(() => {
-    const loadDevices = async () => {
-      if (!token) return;
-      
-      setIsLoading(true);
-      try {
-        const response = await apiService.getAllDevices(token);
-        if (response.success && response.data) {
-          // Mock additional data for demonstration
-          const enhancedDevices: DeviceData[] = response.data.devices.map((device, index) => ({
-            ...device,
-            wellName: `Pipe${String(index + 1).padStart(3, '0')}-01`,
-            lastCommTime: '2025-09-01 08:15Z',
-            waterCut: Math.floor(Math.random() * 30) + 10,
-            gvf: Math.floor(Math.random() * 30) + 10,
-            wfr: Math.floor(Math.random() * 5000) + 1000,
-            ofr: Math.floor(Math.random() * 5000) + 1000,
-            gfr: Math.floor(Math.random() * 20000) + 5000,
-            status: Math.random() > 0.3 ? 'Online' : 'Offline'
-          }));
-          setDevices(enhancedDevices);
-          setFilteredDevices(enhancedDevices);
-        } else {
-          setError(response.message);
-        }
-      } catch (error) {
-        setError('Failed to load devices');
-        console.error('Failed to load devices:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
     loadDevices();
-  }, [token]);
+  }, [token, selectedHierarchy, searchTerm, filters]);
 
-  useEffect(() => {
-    const filtered = devices.filter(device =>
-      device.serial_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      device.wellName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      device.type.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-    setFilteredDevices(filtered);
-  }, [searchTerm, devices]);
+  const loadDevices = async () => {
+    if (!token) return;
+    
+    setIsLoading(true);
+    try {
+      let response: any;
+      
+      if (selectedHierarchy?.id && selectedHierarchy.id !== selectedHierarchy.name) {
+        // Load devices for specific hierarchy
+        response = await apiService.getDevicesByHierarchy(
+          parseInt(selectedHierarchy.id),
+          token,
+          {
+            search: searchTerm,
+            status: filters.status,
+            deviceType: filters.deviceType,
+          }
+        );
+      } else {
+        // Load all devices for company
+        response = await apiService.getAllDevicesEnhanced(token, {
+          search: searchTerm,
+          status: filters.status,
+          deviceType: filters.deviceType,
+          limit: 100,
+        });
+      }
+      
+      if (response.success && response.data) {
+        setDevices(response.data.devices);
+        setStatistics(response.data.statistics);
+      } else {
+        setError(response.message);
+      }
+    } catch (error) {
+      setError('Failed to load devices');
+      console.error('Failed to load devices:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-  const onlineCount = filteredDevices.filter(d => d.status === 'Online').length;
-  const offlineCount = filteredDevices.filter(d => d.status === 'Offline').length;
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return 'Unknown';
+    return new Date(dateString).toLocaleDateString('en-GB');
+  };
+
+  const formatTime = (dateString?: string) => {
+    if (!dateString) return 'Unknown';
+    return new Date(dateString).toLocaleString('en-GB', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-        <span className="ml-2 text-white">Loading devices...</span>
+        <span className={`ml-2 ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+          Loading devices...
+        </span>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="p-4 rounded-lg bg-red-900/20 text-red-400">
+      <div className={`p-4 rounded-lg ${
+        theme === 'dark' ? 'bg-red-900/20 text-red-400' : 'bg-red-50 text-red-600'
+      }`}>
         Error: {error}
       </div>
     );
@@ -104,7 +120,7 @@ const DevicesPage: React.FC = () => {
               theme === 'dark' ? 'text-white' : 'text-gray-900'
             }`}
           >
-            Device List
+            Device List {statistics && `(${statistics.totalDevices})`}
           </h1>
           {/* Search Bar */}
           <div className="relative mb-6 max-w-md">
@@ -165,7 +181,7 @@ const DevicesPage: React.FC = () => {
                   theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
                 }`}
               >
-                Online
+                Online ({statistics?.onlineDevices || 0})
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -175,7 +191,7 @@ const DevicesPage: React.FC = () => {
                   theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
                 }`}
               >
-                Offline
+                Offline ({statistics?.offlineDevices || 0})
               </span>
             </div>
           </div>
@@ -275,9 +291,9 @@ const DevicesPage: React.FC = () => {
               theme === 'dark' ? 'divide-[#494d6d]' : 'divide-gray-200'
             }`}
           >
-            {filteredDevices.map((device, index) => (
+            {devices.map((device) => (
               <div
-                key={device.id}
+                key={device.deviceId}
                 className={`grid grid-cols-10 gap-4 px-6 py-4 transition-colors ${
                   theme === 'dark' ? 'hover:bg-[#25355fcc]' : 'hover:bg-gray-50'
                 }`}
@@ -287,7 +303,7 @@ const DevicesPage: React.FC = () => {
                     theme === 'dark' ? 'text-white' : 'text-gray-900'
                   }`}
                 >
-                  {device.serial_number}
+                  {device.deviceSerial}
                 </div>
                 <div
                   className={`text-sm ${
@@ -301,49 +317,49 @@ const DevicesPage: React.FC = () => {
                     theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
                   }`}
                 >
-                  {device.serial_number}
+                  {device.deviceSerial}
                 </div>
                 <div
                   className={`text-sm ${
                     theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
                   }`}
                 >
-                  {device.lastCommTime}
+                  {formatTime(device.lastCommTime)}
                 </div>
                 <div
                   className={`text-sm ${
                     theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
                   }`}
                 >
-                  {device.waterCut}%
+                  {device.flowData.wlr ? `${device.flowData.wlr.toFixed(1)}%` : 'N/A'}
                 </div>
                 <div
                   className={`text-sm ${
                     theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
                   }`}
                 >
-                  {device.gvf}%
+                  {device.flowData.gvf ? `${device.flowData.gvf.toFixed(1)}%` : 'N/A'}
                 </div>
                 <div
                   className={`text-sm ${
                     theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
                   }`}
                 >
-                  {device.wfr}
+                  {device.flowData.wfr ? device.flowData.wfr.toFixed(0) : 'N/A'}
                 </div>
                 <div
                   className={`text-sm ${
                     theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
                   }`}
                 >
-                  {device.ofr}
+                  {device.flowData.ofr ? device.flowData.ofr.toFixed(0) : 'N/A'}
                 </div>
                 <div
                   className={`text-sm ${
                     theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
                   }`}
                 >
-                  {device.gfr}
+                  {device.flowData.gfr ? device.flowData.gfr.toFixed(0) : 'N/A'}
                 </div>
                 <div>
                   <span
@@ -362,9 +378,9 @@ const DevicesPage: React.FC = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {filteredDevices.map((device) => (
+          {devices.map((device) => (
             <div
-              key={device.id}
+              key={device.deviceId}
               className={`rounded-lg p-6 border transition-colors dark:hover:border-[#6366F1] hover:border-[#F6CA58] ${
                 theme === 'dark'
                   ? 'bg-[#162345] border-none'
@@ -376,7 +392,7 @@ const DevicesPage: React.FC = () => {
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 dark:bg-[#6366F1] bg-[#F56C44] rounded-lg flex items-center justify-center">
                     <span className="text-white font-bold text-sm">
-                      {device.serial_number.slice(-2)}
+                      {device.deviceSerial.slice(-2)}
                     </span>
                   </div>
                   <div>
@@ -385,14 +401,14 @@ const DevicesPage: React.FC = () => {
                         theme === 'dark' ? 'text-white' : 'text-gray-900'
                       }`}
                     >
-                      {device.serial_number}
+                      {device.deviceSerial}
                     </h3>
                     <p
                       className={`text-xs ${
                         theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
                       }`}
                     >
-                      {device.type}
+                      {device.deviceName}
                     </p>
                   </div>
                 </div>
@@ -446,7 +462,7 @@ const DevicesPage: React.FC = () => {
                       theme === 'dark' ? 'text-white' : 'text-gray-900'
                     }`}
                   >
-                    {device.lastCommTime}
+                    {formatTime(device.lastCommTime)}
                   </span>
                 </div>
 
@@ -468,7 +484,7 @@ const DevicesPage: React.FC = () => {
                         theme === 'dark' ? 'text-white' : 'text-gray-900'
                       }`}
                     >
-                      {device.waterCut}%
+                      {device.flowData.wlr ? `${device.flowData.wlr.toFixed(1)}%` : 'N/A'}
                     </p>
                   </div>
                   <div>
@@ -484,7 +500,7 @@ const DevicesPage: React.FC = () => {
                         theme === 'dark' ? 'text-white' : 'text-gray-900'
                       }`}
                     >
-                      {device.gvf}%
+                      {device.flowData.gvf ? `${device.flowData.gvf.toFixed(1)}%` : 'N/A'}
                     </p>
                   </div>
                 </div>
@@ -503,7 +519,7 @@ const DevicesPage: React.FC = () => {
                         theme === 'dark' ? 'text-white' : 'text-gray-900'
                       }`}
                     >
-                      {device.wfr}
+                      {device.flowData.wfr ? device.flowData.wfr.toFixed(0) : 'N/A'}
                     </p>
                   </div>
                   <div>
@@ -519,7 +535,7 @@ const DevicesPage: React.FC = () => {
                         theme === 'dark' ? 'text-white' : 'text-gray-900'
                       }`}
                     >
-                      {device.ofr}
+                      {device.flowData.ofr ? device.flowData.ofr.toFixed(0) : 'N/A'}
                     </p>
                   </div>
                   <div>
@@ -535,7 +551,7 @@ const DevicesPage: React.FC = () => {
                         theme === 'dark' ? 'text-white' : 'text-gray-900'
                       }`}
                     >
-                      {device.gfr}
+                      {device.flowData.gfr ? device.flowData.gfr.toFixed(0) : 'N/A'}
                     </p>
                   </div>
                 </div>
@@ -550,14 +566,14 @@ const DevicesPage: React.FC = () => {
                       theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
                     }`}
                   >
-                    Location:
+                    Company:
                   </span>
                   <span
                     className={`text-xs ${
                       theme === 'dark' ? 'text-white' : 'text-gray-900'
                     }`}
                   >
-                    {device.location || 'Not assigned'}
+                    {device.companyName || 'Unknown'}
                   </span>
                 </div>
               </div>
@@ -566,7 +582,7 @@ const DevicesPage: React.FC = () => {
         </div>
       )}
 
-      {filteredDevices.length === 0 && (
+      {devices.length === 0 && (
         <div className="text-center py-12">
           <div
             className={`text-lg mb-2 ${
@@ -582,6 +598,8 @@ const DevicesPage: React.FC = () => {
           >
             {searchTerm
               ? 'Try adjusting your search terms'
+              : selectedHierarchy?.name
+              ? `No devices found for ${selectedHierarchy.name}`
               : 'No devices available'}
           </div>
         </div>

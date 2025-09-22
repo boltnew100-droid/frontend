@@ -4,7 +4,7 @@ import SidebarDrawer from '../Shared/SidebarDrawer';
 import DashboardContent from './DashboardContent';
 import DevicesPage from './DevicesPage';
 import AlarmsTable from './AlarmsTable';
-import { Device, HierarchyNode } from '../../services/api';
+import { Device, HierarchyNode, EnhancedDevice } from '../../services/api';
 import DashboardHeader from './DashboardHeader';
 
 interface DashboardLayoutProps {
@@ -14,11 +14,11 @@ interface DashboardLayoutProps {
 const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   const { theme } = useTheme();
   const [activeTab, setActiveTab] = useState('Dashboard');
-  const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
+  const [selectedDevice, setSelectedDevice] = useState<Device | EnhancedDevice | null>(null);
   const [selectedHierarchy, setSelectedHierarchy] = useState<HierarchyNode | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  const handleDeviceSelect = (device: Device) => {
+  const handleDeviceSelect = (device: Device | EnhancedDevice) => {
     setSelectedDevice(device);
     setSelectedHierarchy(null);
     // Don't automatically switch to Dashboard - stay on current tab
@@ -54,7 +54,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
           onDeviceSelect={handleDeviceSelect}
           onHierarchySelect={handleHierarchySelect}
           onInitialHierarchyLoad={handleInitialHierarchyLoad}
-          selectedDeviceId={selectedDevice?.id}
+          selectedDeviceId={selectedDevice?.id || (selectedDevice as EnhancedDevice)?.deviceId?.toString()}
           selectedHierarchyId={selectedHierarchy?.id}
         />
         {/* Content Area */}
