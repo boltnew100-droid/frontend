@@ -7,11 +7,10 @@ import {
   DashboardData,
   HierarchyNode,
   Device,
-  EnhancedDevice,
 } from '../../services/api';
 
 interface SidebarDrawerProps {
-  onDeviceSelect?: (device: Device | EnhancedDevice) => void;
+  onDeviceSelect?: (device: Device) => void;
   onHierarchySelect?: (hierarchy: HierarchyNode) => void;
   selectedDeviceId?: string | null;
   selectedHierarchyId?: string | null;
@@ -112,7 +111,32 @@ const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
 
   const handleDeviceClick = (device: Device) => {
     if (onDeviceSelect) {
-      onDeviceSelect(device);
+      // Transform Device to EnhancedDevice format for compatibility
+      const enhancedDevice = {
+        deviceId: parseInt(device.id),
+        deviceSerial: device.serial_number,
+        deviceName: device.type,
+        deviceLogo: device.logo,
+        wellName: device.location || 'Unknown',
+        metadata: device.metadata,
+        location: {},
+        status: 'Online' as const,
+        flowData: {
+          gfr: 0,
+          gor: 0,
+          ofr: 0,
+          wfr: 0,
+          gvf: 0,
+          wlr: 0,
+          pressure: 0,
+          temperature: 0
+        },
+        createdAt: device.created_at,
+        companyName: device.company,
+        // Keep original device data for backward compatibility
+        ...device
+      };
+      onDeviceSelect(enhancedDevice as any);
     }
   };
 
